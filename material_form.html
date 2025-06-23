@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>備品領用登記表</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+  <h1>備品領用登記表</h1>
+  <h4>📷 掃描 QRCode 可自動帶入儲位與料號</h4>
+
+  <div id="reader" style="width:300px;"></div>
+  <br>
+
+  <form id="materialForm">
+    領取人：<input name="person" required><br><br>
+    單位　：<input name="unit" required><br><br>
+    儲位　：<input name="location" id="location" readonly><br><br>
+    料號　：<input name="itemNo" id="itemNo" readonly><br><br>
+    數量　：<input name="qty" type="number" required><br><br>
+    <button type="submit">送出</button>
+  </form>
+
+  <div id="resultMsg" style="margin-top:20px; color:green;"></div>
+
+  <script>
+    const scriptURL = "https://script.google.com/macros/s/AKfycbzXIYUNX4Ly-NUUGACIUkAcuzUyzHpc6XCPBmOpjau4qiOL_3Wmq7LVMERLkMfO5PxubQ/exec";
+
+    function onScanSuccess(decodedText) {
+      console.log("掃描成功:", decodedText);
+      const parts = decodedText.split("|");
+      if (parts.length >= 4) {
+        document.getElementById("location").value = parts[2];
+        document.getElementById("itemNo").value = parts[3];
+      } else {
+        alert("⚠️ QRCode 格式錯誤，應為 'xx|xx|儲位|料號'");
+      }
+    }
+
+    function onScanFailure(error) {
+      // 可以忽略掃描失敗的情況
+    }
+
+    window.onload = () => {
+      const qrScanner = new Html5QrcodeScanner("reader", {
+        fps: 10,
+        qrbox: 250
+      });
+      qrScanner.render(onScanSuccess, onScanFailure);
+    };
+
+    document.getElementById("materialForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const formData = new FormData(this);
+      formData.append("timestamp", new Date().toISOString()); // 可選，GAS 端已自動產生
+      fetch(scriptURL, {
+        method: "POST",
+        body: formData
+      }).then(res => res.text())
+        .then(msg => {
+          document.getElementById("resultMsg").innerText = "✅ 表單送出成功";
+          this.reset();
+          document.getElementById("location").value = "";
+          document.getElementById("itemNo").value = "";
+        }).catch(err => {
+          document.getElementById("resultMsg").innerText = "❌ 送出錯誤：" + err;
+        });
+    });
+  </script>
+</body>
+</html>
