@@ -7,12 +7,9 @@
 </head>
 <body>
   <h1>備品領用登記表</h1>
-  <h4>📷 可掃描 QRCode 或上傳圖片，自動帶入儲位與料號</h4>
+  <h4>📷 掃描 QRCode 可自動帶入儲位與料號</h4>
 
   <div id="reader" style="width:300px;"></div>
-  <div style="margin-top:10px;">
-    或 👉 <input type="file" accept="image/*" id="qrFileInput">
-  </div>
   <br>
 
   <form id="materialForm">
@@ -27,9 +24,10 @@
   <div id="resultMsg" style="margin-top:20px; color:green;"></div>
 
   <script>
-    const scriptURL = "https://script.google.com/macros/s/AKfycbxnrcWayCu5KINet9OIsN43c5ki3sXwWo8g_Fuq4wWSTd1XZ6d3zacX0u1bjEuF52Rq/exec";
+    const apiURL = "https://api.sheety.co/9f325b6b8a2b30e493977572df4f8d27/備品領用登記表/2025";
 
-    function handleDecodedText(decodedText) {
+    // QRCode 掃描成功處理
+    function onScanSuccess(decodedText) {
       console.log("掃描成功:", decodedText);
       const parts = decodedText.split("|");
       if (parts.length >= 4) {
@@ -40,53 +38,50 @@
       }
     }
 
-    // 鏡頭掃描啟動
-    Html5Qrcode.getCameras().then(cameras => {
-      if (cameras && cameras.length) {
-        const backCam = cameras.find(cam => cam.label.toLowerCase().includes("back")) || cameras[0];
-        const qrScanner = new Html5Qrcode("reader");
-        qrScanner.start(
-          backCam.id,
-          { fps: 10, qrbox: 250 },
-          handleDecodedText,
-          () => {}
-        ).catch(err => {
-          console.warn("鏡頭啟動失敗：", err);
-        });
-      } else {
-        console.warn("⚠️ 找不到可用鏡頭");
-      }
-    }).catch(err => {
-      console.warn("取得鏡頭失敗：", err);
-    });
+    function onScanFailure(error) {
+      // 可忽略錯誤
+    }
 
-    // 圖片上傳掃描
-    document.getElementById("qrFileInput").addEventListener("change", function () {
-      const file = this.files[0];
-      if (!file) return;
-      const qrReader = new Html5Qrcode("reader");
-      qrReader.scanFile(file, true)
-        .then(decodedText => handleDecodedText(decodedText))
-        .catch(err => alert("❌ 圖片讀取失敗：" + err));
-    });
+    // 初始化 QRCode 掃描器
+    window.onload = () => {
+      const qrScanner = new Html5QrcodeScanner("reader", {
+        fps: 10,
+        qrbox: 250
+      });
+      qrScanner.render(onScanSuccess, onScanFailure);
+    };
 
-    // 表單送出
+    // 表單送出處理
     document.getElementById("materialForm").addEventListener("submit", function (e) {
       e.preventDefault();
       const formData = new FormData(this);
-      formData.append("timestamp", new Date().toISOString());
-      fetch(scriptURL, {
+
+      const data = {
+        2025: {
+          person: formData.get("person"),
+          unit: formData.get("unit"),
+          location: formData.get("location"),
+          itemNo: formData.get("itemNo"),
+          qty: formData.get("qty"),
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      fetch(apiURL, {
         method: "POST",
-        body: formData
-      }).then(res => res.text())
-        .then(msg => {
-          document.getElementById("resultMsg").innerText = "✅ 表單送出成功";
-          this.reset();
-          document.getElementById("location").value = "";
-          document.getElementById("itemNo").value = "";
-        }).catch(err => {
-          document.getElementById("resultMsg").innerText = "❌ 送出錯誤：" + err;
-        });
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      }).then(response => {
+        if (!response.ok) throw new Error("HTTP 錯誤 " + response.status);
+        return response.json();
+      }).then(json => {
+        document.getElementById("resultMsg").innerText = "✅ 表單送出成功！";
+        document.getElementById("materialForm").reset();
+        document.getElementById("location").value = "";
+        document.getElementById("itemNo").value = "";
+      }).catch(err => {
+        document.getElementById("resultMsg").innerText = "❌ 送出錯誤：" + err;
+      });
     });
   </script>
 </body>
