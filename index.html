@@ -7,16 +7,19 @@
 </head>
 <body>
   <h1>備品領用登記表</h1>
-  <h4>📷 掃描 QRCode 可自動帶入儲位與料號</h4>
+  <h4>📷 可掃描 QRCode 或上傳圖片，自動帶入儲位與料號</h4>
 
   <div id="reader" style="width:300px;"></div>
+  <div style="margin-top:10px;">
+    或 👉 <input type="file" accept="image/*" id="qrFileInput">
+  </div>
   <br>
 
   <form id="materialForm">
     領取人：<input name="person" required><br><br>
     單位　：<input name="unit" required><br><br>
-    儲位　：<input name="location" id="location" readonly><br><br>
-    料號　：<input name="itemNo" id="itemNo" readonly><br><br>
+    儲位　：<input name="location" id="location"><br><br>
+    料號　：<input name="itemNo" id="itemNo"><br><br>
     數量　：<input name="qty" type="number" required><br><br>
     <button type="submit">送出</button>
   </form>
@@ -24,9 +27,9 @@
   <div id="resultMsg" style="margin-top:20px; color:green;"></div>
 
   <script>
-    const scriptURL = "https://script.google.com/macros/s/AKfycbwHel1wtrZN8F6dh6LIQNNy_NEWmy3I89GXjEx5HghPXe5oSW9ptUJE24XLUGeFZGO69A/exec";
+    const scriptURL = "https://script.google.com/macros/s/AKfycbzXIYUNX4Ly-NUUGACIUkAcuzUyzHpc6XCPBmOpjau4qiOL_3Wmq7LVMERLkMfO5PxubQ/exec";
 
-    function onScanSuccess(decodedText) {
+    function handleDecodedText(decodedText) {
       console.log("掃描成功:", decodedText);
       const parts = decodedText.split("|");
       if (parts.length >= 4) {
@@ -37,22 +40,41 @@
       }
     }
 
-    function onScanFailure(error) {
-      // 可以忽略掃描失敗的情況
-    }
+    // 鏡頭掃描啟動
+    Html5Qrcode.getCameras().then(cameras => {
+      if (cameras && cameras.length) {
+        const backCam = cameras.find(cam => cam.label.toLowerCase().includes("back")) || cameras[0];
+        const qrScanner = new Html5Qrcode("reader");
+        qrScanner.start(
+          backCam.id,
+          { fps: 10, qrbox: 250 },
+          handleDecodedText,
+          () => {}
+        ).catch(err => {
+          console.warn("鏡頭啟動失敗：", err);
+        });
+      } else {
+        console.warn("⚠️ 找不到可用鏡頭");
+      }
+    }).catch(err => {
+      console.warn("取得鏡頭失敗：", err);
+    });
 
-    window.onload = () => {
-      const qrScanner = new Html5QrcodeScanner("reader", {
-        fps: 10,
-        qrbox: 250
-      });
-      qrScanner.render(onScanSuccess, onScanFailure);
-    };
+    // 圖片上傳掃描
+    document.getElementById("qrFileInput").addEventListener("change", function () {
+      const file = this.files[0];
+      if (!file) return;
+      const qrReader = new Html5Qrcode("reader");
+      qrReader.scanFile(file, true)
+        .then(decodedText => handleDecodedText(decodedText))
+        .catch(err => alert("❌ 圖片讀取失敗：" + err));
+    });
 
+    // 表單送出
     document.getElementById("materialForm").addEventListener("submit", function (e) {
       e.preventDefault();
       const formData = new FormData(this);
-      formData.append("timestamp", new Date().toISOString()); // 可選，GAS 端已自動產生
+      formData.append("timestamp", new Date().toISOString());
       fetch(scriptURL, {
         method: "POST",
         body: formData
