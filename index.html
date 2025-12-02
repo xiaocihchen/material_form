@@ -1,70 +1,565 @@
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="UTF-8">
-  <title>備品領用登記表</title>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-</head>
-<body>
-  <h1>備品領用登記表</h1>
-  <h4>📷 掃描 QRCode 可自動帶入儲位與料號（也可手動填寫）</h4>
+import React, { useState, useEffect } from 'react';
+import { 
+  Plane, MapPin, Coffee, ShoppingBag, Camera, 
+  Utensils, Navigation, Sun, CloudSnow, Cloud, 
+  CreditCard, Phone, Home, Info, CheckCircle, ExternalLink, ArrowRight
+} from 'lucide-react';
 
-  <div id="reader" style="width:300px;"></div>
-  <br>
+// --- Theme: Minimalist Korean / Oatmeal ---
+const THEME = {
+  bg: "bg-[#F9F8F6]", // Clean warm white
+  card: "bg-white",
+  textPrimary: "text-[#4A4036]", // Dark coffee
+  textSecondary: "text-[#8C8179]", // Greige
+  accent: "bg-[#D4C5B9]", // Muted Beige
+  accentText: "text-[#D4C5B9]",
+  border: "border-[#E8E0D9]",
+  btn: "bg-[#8C8179]", // Button color
+  tabActive: "bg-[#4A4036] text-[#D4C5B9] border-[#4A4036]",
+  tabInactive: "bg-[#F9F8F6] text-[#8C8179] border-[#E8E0D9]"
+};
 
-  <form id="materialForm">
-    領取人：<input name="person" required><br><br>
-    單位　：<input name="unit" required><br><br>
-    儲位　：<input name="location" id="location"><br><br>
-    料號　：<input name="itemNo" id="itemNo"><br><br>
-    數量　：<input name="qty" type="number" required><br><br>
-    <button type="submit">送出</button>
-  </form>
+// --- Data Structure ---
 
-  <div id="resultMsg" style="margin-top:20px; color:green;"></div>
+const TRIP_DATES = [
+  "2025/12/05",
+  "2025/12/06",
+  "2025/12/07",
+  "2025/12/08"
+];
 
-  <script>
-    const scriptURL = "https://script.google.com/macros/s/AKfycbxnrcWayCu5KINet9OIsN43c5ki3sXwWo8g_Fuq4wWSTd1XZ6d3zacX0u1bjEuF52Rq/exec";
+const WEATHER_MOCK = {
+  "2025/12/05": { temp: "2°C", icon: <Cloud className="w-6 h-6 text-[#A8A199]" />, desc: "多雲 / 乾冷", clothing: "建議穿著大衣、圍巾" },
+  "2025/12/06": { temp: "-1°C", icon: <CloudSnow className="w-6 h-6 text-[#BCC5CE]" />, desc: "微雪 / 寒冷", clothing: "發熱衣、羽絨服必備" },
+  "2025/12/07": { temp: "0°C", icon: <Sun className="w-6 h-6 text-[#D9C5B2]" />, desc: "晴朗 / 強風", clothing: "注意防風，戴帽子" },
+  "2025/12/08": { temp: "3°C", icon: <Sun className="w-6 h-6 text-[#D9C5B2]" />, desc: "晴時多雲", clothing: "洋蔥式穿搭" },
+};
 
-    function onScanSuccess(decodedText) {
-      console.log("掃描成功:", decodedText);
-      const parts = decodedText.split("|");
-      if (parts.length >= 4) {
-        document.getElementById("location").value = parts[2];
-        document.getElementById("itemNo").value = parts[3];
-      } else {
-        alert("⚠️ QRCode 格式錯誤，應為 'xx|xx|儲位|料號'");
-      }
+// Helper to create shopping items with links
+const shopItem = (name, note = "") => ({ name, note });
+
+const SCHEDULE = {
+  "2025/12/05": [
+    { time: "06:50", title: "高雄出發 KHH", type: "transport", location: "高雄小港機場", note: "長榮航空 BR140", icon: <Plane /> },
+    { time: "10:45", title: "抵達仁川 ICN", type: "transport", location: "仁川國際機場", note: ["記得先換少量韓幣", "辦理SES自動通關"], tags: ["重要"], icon: <Info /> },
+    { time: "12:08", title: "AREX 機場快線", type: "transport", location: "仁川機場站 -> 首爾站", note: "直達列車", icon: <Navigation /> },
+    { time: "13:15", title: "WECO STAY Check-in", type: "stay", location: "WECO STAY Myeongdong", note: "寄放行李", icon: <Home /> },
+    { time: "13:30", title: "SKY 換錢所", type: "money", location: "Myeongdong Money Exchange", note: "匯率通常較好", icon: <CreditCard /> },
+    { time: "14:00", title: "匠人鐵板雞", type: "food", location: "Jang-in Dakgalbi Myeongdong", note: "午餐推薦 / 起司口味必點", tags: ["必吃"], icon: <Utensils /> },
+    { 
+      time: "15:00", 
+      title: "明洞逛街攻略", 
+      type: "shop", 
+      location: "Myeongdong Street", 
+      desc: "美妝、潮牌、小吃大集合",
+      icon: <ShoppingBag />,
+      shoppingList: [
+        shopItem("龍鬚糖小哥", "17:00-23:00"),
+        shopItem("BRICKSAND", "費南雪必買(抹茶/巧克力/胡椒/伯爵)"),
+        shopItem("EPT", "熱門潮鞋"),
+        shopItem("Berry new"),
+        shopItem("Covernat 明洞旗艦店"),
+        shopItem("KODAK CENTER SHOP"),
+        shopItem("MLB 明洞直營店"),
+        shopItem("emis 明洞旗艦店"),
+        shopItem("MARITHÉ 明洞旗艦店"),
+        shopItem("sinoon"),
+        shopItem("NYUNYU", "飾品批發價"),
+        shopItem("Lee"),
+        shopItem("Life Work"),
+        shopItem("POCA SPOT", "Kpop小卡專賣"),
+        shopItem("butter Shop"),
+        shopItem("Breadypost 明洞店"),
+        shopItem("哈莫妮超市", "伴手禮補貨"),
+        shopItem("DAISO 大創", "明洞旗艦店"),
+        shopItem("THE NORTH FACE")
+      ]
+    },
+    { time: "19:30", title: "鐘路雞林 辣燉雞肉湯", type: "food", location: "Jongno Gyerim Dakdoritang", note: "蒜頭雞湯始祖", tags: ["必吃"], icon: <Utensils /> },
+    { 
+      time: "20:30", 
+      title: "益善洞韓屋村", 
+      type: "visit", 
+      location: "Ikseon-dong Hanok Village", 
+      icon: <Camera />,
+      tips: [
+        { label: "小夏鹽田", text: "鹽麵包、奶油鹽可頌、草莓鹽麵包", highlight: true },
+        { label: "Mil Toast House", text: "手撕蒸氣吐司 (栗子口味)", highlight: true }
+      ]
     }
+  ],
+  "2025/12/06": [
+    { time: "09:00", title: "奉恩寺", type: "visit", location: "Bongeunsa Temple", note: "入口->大雄殿->彌勒大佛", icon: <Camera /> },
+    { time: "10:30", title: "星空圖書館", type: "visit", location: "Starfield Library COEX", note: "巨型書牆打卡", icon: <Camera /> },
+    { time: "12:00", title: "祖傳三代馬鈴薯排骨湯", type: "food", location: "Somunnan Seongsu Potato Soup", note: "聖水洞必吃", tags: ["排隊美食"], icon: <Utensils /> },
+    { 
+      time: "13:30", 
+      title: "聖水洞 逛街地圖", 
+      type: "shop", 
+      location: "Seongsu-dong Cafe Street", 
+      desc: "最潮咖啡廳與品牌聚集地",
+      icon: <ShoppingBag />,
+      shoppingList: [
+        shopItem("JUUNEEDU", "睡衣品牌"),
+        shopItem("Milky Shop"),
+        shopItem("newmix coffee", "推薦抹茶、炒栗子、炒米"),
+        shopItem("OLIVE YOUNG"),
+        shopItem("emis 聖水旗艦店"),
+        shopItem("巨大鹹蛋塔"),
+        shopItem("SECONDAIRE"),
+        shopItem("maman gelato"),
+        shopItem("自然島鹽麵包"),
+        shopItem("SW19", "伯賢推薦香水(3pm)"),
+        shopItem("大林倉庫", "藝廊咖啡廳"),
+        shopItem("Cafe Onion", "廢墟風咖啡"),
+        shopItem("HAUS NOWHERE", "Gentle Monster 旗下"),
+        shopItem("Standard Bread", "焦糖布丁法國吐司")
+      ]
+    },
+    { 
+      time: "17:00", 
+      title: "廣藏市場", 
+      type: "food", 
+      location: "Gwangjang Market", 
+      desc: "傳統美食攻略",
+      icon: <Utensils />,
+      tips: [
+        { label: "Garlic Boy", text: "招牌香蒜麵包", highlight: true },
+        { label: "糯米麻花捲", text: "入口排隊名店", highlight: true },
+        { label: "順熙家", text: "綠豆煎餅" },
+        { label: "生章魚", text: "69號攤位(中文可)", highlight: true },
+        { label: "棉被店", text: "88/128/158/166-2/167號" }
+      ]
+    },
+    { time: "20:00", title: "新堂魚蛋刀削麵", type: "food", location: "Sindang-dong", note: "暖胃宵夜", icon: <Utensils /> },
+    { time: "21:30", title: "東大門 APM / 陳玉華一隻雞", type: "visit", location: "Dongdaemun Design Plaza", note: "不夜城逛街", icon: <ShoppingBag /> },
+    { time: "23:00", title: "BCH 炸雞", type: "food", location: "BHC Chicken", note: "宵夜場", icon: <Utensils /> }
+  ],
+  "2025/12/07": [
+    { 
+      time: "10:00", 
+      title: "南山首爾塔", 
+      type: "visit", 
+      location: "N Seoul Tower", 
+      desc: "首爾全景",
+      icon: <Camera />,
+      tips: [
+        { label: "交通", text: "纜車約3分鐘抵達" },
+        { label: "愛情鎖", text: "販賣機一組14,000韓元起" },
+        { label: "燈光", text: "藍(好) > 綠 > 黃 > 紅(差)" }
+      ]
+    },
+    { time: "13:00", title: "花蟹世界", type: "food", location: "Kkotge World Seoul", note: "醬蟹大餐", tags: ["預約推薦"], icon: <Utensils /> },
+    { 
+      time: "14:00", 
+      title: "弘大商圈 爆買行程", 
+      type: "shop", 
+      location: "Hongdae Shopping Street", 
+      desc: "年輕潮流、文創小物",
+      icon: <ShoppingBag />,
+      shoppingList: [
+        shopItem("Acorn Caricature", "橡子漫畫似顏繪"),
+        shopItem("Object 弘大總店", "Dinotaeng 袋鼠在這"),
+        shopItem("DAISO 大創"),
+        shopItem("POCA SPOT"),
+        shopItem("arch2ve"),
+        shopItem("pocaboo"),
+        shopItem("READY YOUNG"),
+        shopItem("信用卡扭蛋機"),
+        shopItem("CARLYN", "雲朵包"),
+        shopItem("WHO.A.U"),
+        shopItem("SPAO"),
+        shopItem("NERDY 弘大旗艦店"),
+        shopItem("安知恩推薦韓系衣服店"),
+        shopItem("I am joy", "飾品"),
+        shopItem("CU 泡麵圖書館"),
+        shopItem("Waikei"),
+        shopItem("olive young"),
+        shopItem("Covernat"),
+        shopItem("Wacky WiLLy"),
+        shopItem("thisisneverthat"),
+        shopItem("Lee"),
+        shopItem("LMC"),
+        shopItem("Marithé MFG"),
+        shopItem("ADER error"),
+        shopItem("KANGOL 弘大直營店")
+      ]
+    },
+    { time: "20:00", title: "荒謬的生肉", type: "food", location: "Ungteori Saenggogi Hongdae", note: "烤肉吃到飽", icon: <Utensils /> }
+  ],
+  "2025/12/08": [
+    { time: "09:00", title: "Artist Bakery", type: "food", location: "Artist Bakery Anguk", note: "安國站鹽麵包名店", tags: ["早起"], icon: <Coffee /> },
+    { time: "10:00", title: "光化門 / 景福宮", type: "visit", location: "Gyeongbokgung Palace", note: "守門將換崗儀式 / 韓服體驗", icon: <Camera /> },
+    { time: "13:00", title: "無垢屋", type: "food", location: "Mugunghwa Korean Restaurant", note: "精緻韓食", icon: <Utensils /> },
+    { time: "16:00", title: "領取行李", type: "stay", location: "WECO STAY Myeongdong", icon: <Home /> },
+    { time: "16:50", title: "前往機場", type: "transport", location: "Seoul Station", note: "搭乘 AREX 直達車", icon: <Navigation /> },
+    { time: "20:40", title: "返程航班", type: "transport", location: "Incheon International Airport", note: "長榮航空 BR171 -> KHH", icon: <Plane /> }
+  ]
+};
 
-    function onScanFailure(error) {
-      // 可以忽略掃描錯誤
+const TOOLS = {
+  flight: {
+    outbound: {
+      code: "BR140",
+      from: "KHH 高雄",
+      to: "ICN 仁川",
+      time: "06:50 - 10:45",
+      date: "12月05日"
+    },
+    inbound: {
+      code: "BR171",
+      from: "ICN 仁川",
+      to: "KHH 高雄",
+      time: "20:40 - 22:55",
+      date: "12月08日"
     }
+  },
+  hotel: {
+    name: "WECO STAY Myeongdong",
+    address: "首爾特别市 中區 忠武路",
+    checkin: "16:00",
+    checkout: "11:00",
+    note: "自助 Check-in，密碼請查收 Email"
+  },
+  emergency: [
+    { name: "韓國觀光公社", phone: "1330" },
+    { name: "緊急報警", phone: "112" },
+    { name: "火警/救護", phone: "119" },
+    { name: "外交部急難救助", phone: "+82-10-9093-2458" }
+  ]
+};
 
-    window.onload = () => {
-      const qrScanner = new Html5QrcodeScanner("reader", {
-        fps: 10,
-        qrbox: 250
-      });
-      qrScanner.render(onScanSuccess, onScanFailure);
-    };
+// --- Components ---
 
-    document.getElementById("materialForm").addEventListener("submit", function (e) {
-      e.preventDefault();
-      const formData = new FormData(this);
-      fetch(scriptURL, {
-        method: "POST",
-        body: formData
-      }).then(res => res.text())
-        .then(msg => {
-          document.getElementById("resultMsg").innerText = "✅ 表單送出成功";
-          this.reset();
-          document.getElementById("location").value = "";
-          document.getElementById("itemNo").value = "";
-        }).catch(err => {
-          document.getElementById("resultMsg").innerText = "❌ 送出錯誤：" + err;
-        });
-    });
-  </script>
-</body>
-</html>
+const NavigateButton = ({ location }) => (
+  <a 
+    href={`https://map.naver.com/p/search/${encodeURIComponent(location)}`} 
+    target="_blank" 
+    rel="noopener noreferrer"
+    className={`flex items-center justify-center gap-1 ${THEME.btn} text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-sm active:scale-95 transition-transform`}
+  >
+    <Navigation className="w-3 h-3" />
+    導航
+  </a>
+);
+
+const ShopLink = ({ name, note }) => (
+  <a
+    href={`https://search.naver.com/search.naver?query=${encodeURIComponent("Seoul " + name)}`}
+    target="_blank"
+    rel="noopener noreferrer"
+    className={`block w-full text-left bg-white border p-2.5 rounded-lg mb-2 transition-all shadow-sm active:bg-[#F9F8F6] group ${THEME.border} hover:border-[#D4C5B9]`}
+  >
+    <div className="flex justify-between items-center">
+      <div>
+        <span className={`font-bold text-sm transition-colors ${THEME.textPrimary} group-hover:text-[#8C8179]`}>{name}</span>
+        {note && <span className={`block text-[10px] mt-0.5 ${THEME.textSecondary}`}>{note}</span>}
+      </div>
+      <ExternalLink className={`w-3 h-3 text-[#DCD5CF] group-hover:text-[#8C8179]`} />
+    </div>
+  </a>
+);
+
+const Tag = ({ text, color = "bg-[#E8E0D9] text-[#8C8179]" }) => (
+  <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${color} mr-1.5`}>
+    {text}
+  </span>
+);
+
+const TimelineCard = ({ item }) => {
+  let borderColor = "border-[#E8E0D9]";
+  let iconColor = "text-[#8C8179]";
+  
+  switch(item.type) {
+    case 'food': borderColor = "border-[#E6C9A8]"; iconColor = "text-[#CFA982]"; break;
+    case 'visit': borderColor = "border-[#C9D6C5]"; iconColor = "text-[#9EB596]"; break;
+    case 'shop': borderColor = "border-[#D4C5B9]"; iconColor = "text-[#968881]"; break;
+    case 'transport': break;
+    default: break;
+  }
+
+  return (
+    <div className={`mb-4 p-4 rounded-xl shadow-sm border ${borderColor} bg-white relative`}>
+      <div className="flex justify-between items-start mb-2">
+        <div className="flex items-center gap-2">
+          <div className={`p-1.5 rounded-full bg-[#F9F8F6] ${iconColor}`}>
+             {item.icon && React.isValidElement(item.icon) 
+               ? React.cloneElement(item.icon, { size: 16 }) 
+               : <MapPin size={16} />
+             }
+          </div>
+          <div>
+            <span className="text-xs font-bold text-[#8C8179] block">{item.time}</span>
+            <h3 className={`font-bold text-base leading-tight ${THEME.textPrimary}`}>{item.title}</h3>
+          </div>
+        </div>
+        <NavigateButton location={item.location} />
+      </div>
+
+      <div className="pl-9">
+        {item.tags && (
+          <div className="mb-2 flex flex-wrap gap-y-1">
+            {item.tags.map(t => (
+              <Tag key={t} text={t} color="bg-[#EFE5D5] text-[#8C5E3C]" />
+            ))}
+          </div>
+        )}
+        
+        {item.note && (
+          Array.isArray(item.note) ? (
+            <div className={`text-sm mb-1 ${THEME.textSecondary}`}>
+              {item.note.map((n, i) => (
+                <p key={i} className="flex items-center gap-1.5 mb-1 last:mb-0">
+                  <span className="w-1 h-1 rounded-full bg-[#D4C5B9] inline-block shrink-0"></span>
+                  {n}
+                </p>
+              ))}
+            </div>
+          ) : (
+            <p className={`text-sm mb-1 ${THEME.textSecondary}`}>{item.note}</p>
+          )
+        )}
+        
+        {item.desc && <p className="text-sm text-[#8C8179] italic mb-2">"{item.desc}"</p>}
+
+        {/* Shopping List Section */}
+        {item.shoppingList && (
+          <div className="mt-3 bg-[#F9F8F6] p-3 rounded-lg border border-[#E8E0D9]">
+            <p className="text-xs font-bold text-[#8C8179] mb-2 uppercase tracking-wide flex items-center gap-1">
+              <ShoppingBag className="w-3 h-3" /> 必逛清單
+            </p>
+            {item.shoppingList.map((shop, idx) => (
+              <ShopLink key={idx} name={shop.name} note={shop.note} />
+            ))}
+          </div>
+        )}
+
+        {item.tips && (
+          <div className="mt-3 bg-[#F9F8F6] p-2.5 rounded-lg space-y-1.5 border border-[#E8E0D9]">
+            {item.tips.map((tip, idx) => (
+              <div key={idx} className="flex items-start gap-1.5 text-xs">
+                <CheckCircle className={`w-3 h-3 mt-0.5 ${tip.highlight ? 'text-[#8C8179]' : 'text-[#DCD5CF]'}`} />
+                <span className={tip.highlight ? `font-bold ${THEME.textPrimary}` : THEME.textSecondary}>
+                  <span className="font-semibold text-[#8C8179]">{tip.label}:</span> {tip.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const FlightCard = ({ flight, label }) => (
+  <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-[#E8E0D9] mb-4">
+    <div className={`h-1.5 w-full ${label === '去程' ? 'bg-[#8C8179]' : 'bg-[#D4C5B9]'}`}></div>
+    <div className="p-5">
+      <div className="flex justify-between items-center mb-4">
+        <span className={`text-xs font-bold px-2 py-0.5 rounded text-white ${label === '去程' ? 'bg-[#8C8179]' : 'bg-[#D4C5B9]'}`}>
+          {label}
+        </span>
+        <span className="font-mono text-sm text-[#D4C5B9]">EVA AIR</span>
+      </div>
+
+      <div className="flex justify-between items-center mb-1">
+        <div className="text-center">
+          <div className={`text-2xl font-black ${THEME.textPrimary}`}>{flight.from.split(' ')[0]}</div>
+          <div className="text-xs text-[#8C8179]">{flight.from.split(' ')[1]}</div>
+        </div>
+        
+        <div className="flex flex-col items-center flex-1 px-4">
+          <div className="flex items-center gap-2 w-full text-[#E8E0D9]">
+            <div className="h-[1px] bg-[#E8E0D9] flex-1"></div>
+            <Plane className="w-4 h-4 transform rotate-90 text-[#D4C5B9]" />
+            <div className="h-[1px] bg-[#E8E0D9] flex-1"></div>
+          </div>
+          <span className="text-[10px] text-[#8C8179] mt-1">{flight.time}</span>
+        </div>
+
+        <div className="text-center">
+          <div className={`text-2xl font-black ${THEME.textPrimary}`}>{flight.to.split(' ')[0]}</div>
+          <div className="text-xs text-[#8C8179]">{flight.to.split(' ')[1]}</div>
+        </div>
+      </div>
+    </div>
+
+    {/* Bottom details */}
+    <div className="bg-[#F9F8F6] px-5 py-3 flex justify-between items-center border-t border-[#E8E0D9] border-dashed">
+      <div>
+        <p className="text-[10px] text-[#8C8179]">Flight No.</p>
+        <p className={`font-bold ${THEME.textPrimary}`}>{flight.code}</p>
+      </div>
+      <div>
+        <p className="text-[10px] text-[#8C8179]">Date</p>
+        <p className={`font-bold ${THEME.textPrimary}`}>{flight.date}</p>
+      </div>
+    </div>
+  </div>
+);
+
+const ToolsPage = () => (
+  <div className="space-y-4 p-1">
+    <div>
+      <h3 className={`font-bold ${THEME.textPrimary} flex items-center gap-2 mb-3 px-1`}>
+        <Plane className="w-5 h-5 text-[#D4C5B9]" /> 航班電子票卡
+      </h3>
+      <FlightCard flight={TOOLS.flight.outbound} label="去程" />
+      <FlightCard flight={TOOLS.flight.inbound} label="回程" />
+    </div>
+
+    <div className={`bg-white p-5 rounded-2xl shadow-sm border ${THEME.border}`}>
+      <h3 className={`font-bold ${THEME.textPrimary} flex items-center gap-2 mb-3`}>
+        <Home className="w-5 h-5 text-[#8C8179]" /> 住宿資訊
+      </h3>
+      <div className={`text-sm space-y-2 ${THEME.textSecondary}`}>
+        <p><span className="font-bold">名稱：</span>{TOOLS.hotel.name}</p>
+        <p><span className="font-bold">地址：</span>{TOOLS.hotel.address}</p>
+        <div className="flex gap-4 mt-2">
+          <div className="bg-[#F9F8F6] px-3 py-1 rounded-lg">
+            <span className="text-xs text-[#8C8179] block">Check-in</span>
+            <span className={`font-bold ${THEME.textPrimary}`}>{TOOLS.hotel.checkin}</span>
+          </div>
+          <div className="bg-[#F9F8F6] px-3 py-1 rounded-lg">
+            <span className="text-xs text-[#8C8179] block">Check-out</span>
+            <span className={`font-bold ${THEME.textPrimary}`}>{TOOLS.hotel.checkout}</span>
+          </div>
+        </div>
+        <p className="text-xs text-[#D4C5B9] mt-2 flex items-center gap-1 font-medium">
+          <Info className="w-3 h-3" /> {TOOLS.hotel.note}
+        </p>
+      </div>
+    </div>
+
+    <div className={`bg-white p-5 rounded-2xl shadow-sm border ${THEME.border}`}>
+      <h3 className={`font-bold ${THEME.textPrimary} flex items-center gap-2 mb-3`}>
+        <Phone className="w-5 h-5 text-[#D4A373]" /> 緊急聯絡
+      </h3>
+      <div className="grid grid-cols-2 gap-3">
+        {TOOLS.emergency.map((e, idx) => (
+          <div key={idx} className="bg-[#F9F8F6] p-2 rounded-lg text-center">
+            <p className="text-xs text-[#8C8179] mb-1">{e.name}</p>
+            <p className={`font-bold ${THEME.textPrimary} text-sm`}>{e.phone}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div className={`bg-white p-5 rounded-2xl shadow-sm border ${THEME.border}`}>
+      <h3 className={`font-bold ${THEME.textPrimary} flex items-center gap-2 mb-3`}>
+        <CreditCard className="w-5 h-5 text-[#9EB596]" /> 簡易預算/記帳
+      </h3>
+      <div className="bg-[#F9F8F6] p-4 rounded-xl text-center text-[#8C8179] text-sm border-dashed border-2 border-[#E8E0D9]">
+        此區塊可搭配截圖或手寫使用 <br/>
+        預計總預算：₩ 1,000,000
+      </div>
+    </div>
+  </div>
+);
+
+// --- Main App ---
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState(TRIP_DATES[0]);
+  const [showTools, setShowTools] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeTab, showTools]);
+
+  return (
+    <div className={`min-h-screen ${THEME.bg} font-sans pb-20 max-w-md mx-auto shadow-2xl overflow-hidden relative`}>
+      
+      {/* Header */}
+      <div className="bg-white px-6 pt-12 pb-4 sticky top-0 z-20 border-b border-[#E8E0D9]">
+        <h1 className={`text-xl font-black tracking-tight ${THEME.textPrimary} leading-tight`}>
+          2025/12/05 - 12/08<br/>
+          <span className="text-[#D4C5B9] text-2xl">韓國自由行</span>
+        </h1>
+      </div>
+
+      {/* Weather Widget */}
+      {!showTools && (
+        <div className="px-5 mt-4 mb-2">
+          <div className="bg-[#4A4036] rounded-2xl p-4 text-[#F2E6D8] shadow-lg flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-medium bg-white/10 px-2 py-0.5 rounded-full text-[#D4C5B9]">
+                  {activeTab}
+                </span>
+                <span className="text-xs text-[#D4C5B9]">首爾天氣預報</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold text-white">{WEATHER_MOCK[activeTab].temp}</span>
+                <span className="text-sm font-light opacity-90">{WEATHER_MOCK[activeTab].desc}</span>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="mb-2 flex justify-end opacity-90">{WEATHER_MOCK[activeTab].icon}</div>
+              <p className="text-[10px] text-[#D4C5B9] max-w-[100px] leading-tight">
+                {WEATHER_MOCK[activeTab].clothing}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Content Area */}
+      <div className="px-5 py-2">
+        {showTools ? (
+          <ToolsPage />
+        ) : (
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-1 w-1 rounded-full bg-[#D4C5B9]"></div>
+              <p className="text-xs font-bold text-[#8C8179] uppercase tracking-wider">
+                Day {TRIP_DATES.indexOf(activeTab) + 1} Itinerary
+              </p>
+            </div>
+            {SCHEDULE[activeTab].map((item, index) => (
+              <TimelineCard key={index} item={item} />
+            ))}
+            
+            <div className="flex flex-col items-center justify-center py-8 text-[#D4C5B9] gap-2">
+              <div className="w-1 h-8 bg-[#E8E0D9] rounded-full"></div>
+              <span className="text-xs font-medium">Good Night</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#E8E0D9] px-6 py-3 pb-6 flex justify-between items-center z-30 max-w-md mx-auto">
+        {TRIP_DATES.map((date, idx) => {
+          const dayNum = idx + 1;
+          const isActive = !showTools && activeTab === date;
+          return (
+            <button
+              key={date}
+              onClick={() => { setActiveTab(date); setShowTools(false); }}
+              className={`flex flex-col items-center gap-1 transition-all duration-300 ${isActive ? 'transform -translate-y-1' : 'opacity-50'}`}
+            >
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shadow-sm transition-colors ${isActive ? THEME.tabActive : THEME.tabInactive} border`}>
+                D{dayNum}
+              </div>
+              {isActive && <div className="w-1 h-1 bg-[#4A4036] rounded-full"></div>}
+            </button>
+          );
+        })}
+        
+        <div className="w-px h-8 bg-[#E8E0D9] mx-1"></div>
+
+        <button
+          onClick={() => setShowTools(true)}
+          className={`flex flex-col items-center gap-1 transition-all duration-300 ${showTools ? 'transform -translate-y-1 text-[#8C8179]' : 'opacity-50 text-[#8C8179]'}`}
+        >
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-sm transition-colors ${showTools ? 'bg-[#F9F8F6] text-[#4A4036]' : 'bg-white text-[#8C8179]'}`}>
+            <Info className="w-5 h-5" />
+          </div>
+          <span className="text-[10px] font-bold">工具</span>
+        </button>
+      </div>
+
+    </div>
+  );
+}
